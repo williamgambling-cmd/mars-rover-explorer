@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { nasaFetch } from '../../_lib/nasa';
 
 const VALID_ROVERS = ['curiosity', 'opportunity', 'spirit'];
+const NASA_BASE_URL = 'https://api.nasa.gov/mars-photos/api/v1';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { rover } = req.query;
@@ -11,28 +11,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Invalid rover name. Use: curiosity, opportunity, or spirit' });
   }
 
+  const apiKey = (process.env.NASA_API_KEY || 'DEMO_KEY').trim();
   const { sol, earth_date, camera, page } = req.query;
 
-  const params: Record<string, string> = {};
+  const params = new URLSearchParams();
+  params.set('api_key', apiKey);
 
   if (sol) {
-    params.sol = Array.isArray(sol) ? sol[0] : sol;
+    params.set('sol', Array.isArray(sol) ? sol[0] : sol);
   } else if (earth_date) {
-    params.earth_date = Array.isArray(earth_date) ? earth_date[0] : earth_date;
+    params.set('earth_date', Array.isArray(earth_date) ? earth_date[0] : earth_date);
   } else {
-    params.sol = '1'; // Default to sol 1
+    params.set('sol', '1');
   }
 
   if (camera) {
-    params.camera = Array.isArray(camera) ? camera[0] : camera;
+    params.set('camera', Array.isArray(camera) ? camera[0] : camera);
   }
 
   if (page) {
-    params.page = Array.isArray(page) ? page[0] : page;
+    params.set('page', Array.isArray(page) ? page[0] : page);
   }
 
+  const url = `${NASA_BASE_URL}/rovers/${roverName.toLowerCase()}/photos?${params.toString()}`;
+
   try {
-    const response = await nasaFetch(`/rovers/${roverName.toLowerCase()}/photos`, params);
+    const response = await fetch(url);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -42,8 +46,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const data = await response.json();
-
-    // Cache for 1 hour on Vercel's CDN
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
     return res.status(200).json(data);
   } catch (error) {

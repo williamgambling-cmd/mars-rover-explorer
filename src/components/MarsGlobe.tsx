@@ -4,7 +4,7 @@ import 'cesium/Build/Cesium/Widgets/widgets.css';
 import { ROVERS } from '../data/rovers';
 import type { RoverInfo } from '../types';
 
-// Cesium Ion token from env
+// Cesium Ion token from env (inlined at build time by Vite)
 const CESIUM_ION_TOKEN = import.meta.env.VITE_CESIUM_ION_TOKEN as string;
 
 // Mars 3D Tiles asset ID on Cesium Ion
@@ -21,75 +21,71 @@ export default function MarsGlobe({
 }: MarsGlobeProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<Cesium.Viewer | null>(null);
-  const markersRef = useRef<Map<string, Cesium.Entity>>(new Map());
 
   // Initialize CesiumJS viewer
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // Set up Cesium Ion
+    // Set up Cesium Ion access token
     Cesium.Ion.defaultAccessToken = CESIUM_ION_TOKEN;
 
-    // Set Mars ellipsoid as default
+    // Set Mars ellipsoid as default (must be set before creating Viewer)
     Cesium.Ellipsoid.default = Cesium.Ellipsoid.MARS;
 
+    // Create viewer matching Cesium's official Mars example
     const viewer = new Cesium.Viewer(containerRef.current, {
+      // Globe disabled since Mars is loaded as 3D Tiles
       globe: false,
-      baseLayerPicker: false,
-      geocoder: false,
-      homeButton: false,
+      // 2D and Columbus View not supported for global 3D Tiles
       sceneModePicker: false,
+      // Don't use Earth imagery layers
+      baseLayerPicker: false,
+      // Geocoder not supported for Mars
+      geocoder: false,
+      // Disable other unneeded widgets
+      homeButton: false,
       navigationHelpButton: false,
       animation: false,
       timeline: false,
       fullscreenButton: false,
-      vrButton: false,
-      selectionIndicator: false,
-      infoBox: false,
-      skyBox: false,
-      skyAtmosphere: false,
-      requestRenderMode: true,
-      maximumRenderTimeChange: Infinity,
     });
 
     // Dark background for space
     viewer.scene.backgroundColor = Cesium.Color.BLACK;
 
-    // Enable lighting
-    viewer.scene.globe && (viewer.scene.globe.enableLighting = true);
+    viewerRef.current = viewer;
 
-    // Load Mars 3D Tileset
-    Cesium.Cesium3DTileset.fromIonAssetId(MARS_ASSET_ID)
-      .then((tileset) => {
+    // Load Mars 3D Tileset from Cesium Ion
+    async function loadMars() {
+      try {
+        const tileset = await Cesium.Cesium3DTileset.fromIonAssetId(MARS_ASSET_ID);
         viewer.scene.primitives.add(tileset);
 
-        // Zoom to Mars once loaded
-        viewer.camera.flyTo({
+        // Set initial camera position looking at Mars
+        viewer.camera.setView({
           destination: Cesium.Cartesian3.fromDegrees(137.44, -4.59, 8000000),
           orientation: {
             heading: 0,
             pitch: Cesium.Math.toRadians(-90),
             roll: 0,
           },
-          duration: 0,
         });
+      } catch (error) {
+        console.error('Failed to load Mars tileset:', error);
+      }
+    }
 
-        // Continuously render while camera is moving
-        viewer.scene.requestRenderMode = false;
-      })
-      .catch((err) => {
-        console.error('Failed to load Mars tileset:', err);
-      });
+    loadMars();
 
     // Add rover landing site markers
     ROVERS.forEach((rover) => {
       const position = Cesium.Cartesian3.fromDegrees(
         rover.longitude,
         rover.latitude,
-        2000
+        5000
       );
 
-      const entity = viewer.entities.add({
+      viewer.entities.add({
         name: rover.apiName,
         position,
         billboard: {
@@ -97,7 +93,6 @@ export default function MarsGlobe({
           verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
           scale: 1.0,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          heightReference: Cesium.HeightReference.NONE,
         },
         label: {
           text: rover.name,
@@ -111,8 +106,6 @@ export default function MarsGlobe({
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
       });
-
-      markersRef.current.set(rover.apiName, entity);
     });
 
     // Click handler for markers
@@ -131,13 +124,10 @@ export default function MarsGlobe({
       Cesium.ScreenSpaceEventType.LEFT_CLICK
     );
 
-    viewerRef.current = viewer;
-
     return () => {
       handler.destroy();
       viewer.destroy();
       viewerRef.current = null;
-      markersRef.current.clear();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

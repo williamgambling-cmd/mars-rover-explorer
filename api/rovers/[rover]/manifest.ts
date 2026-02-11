@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { nasaFetch } from '../../_lib/nasa';
 
 const VALID_ROVERS = ['curiosity', 'opportunity', 'spirit'];
+const NASA_BASE_URL = 'https://api.nasa.gov/mars-photos/api/v1';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { rover } = req.query;
@@ -11,8 +11,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Invalid rover name. Use: curiosity, opportunity, or spirit' });
   }
 
+  const apiKey = (process.env.NASA_API_KEY || 'DEMO_KEY').trim();
+  const url = `${NASA_BASE_URL}/manifests/${roverName.toLowerCase()}?api_key=${apiKey}`;
+
   try {
-    const response = await nasaFetch(`/manifests/${roverName.toLowerCase()}`);
+    const response = await fetch(url);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -22,8 +25,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const data = await response.json();
-
-    // Manifests change infrequently, cache for 6 hours
     res.setHeader('Cache-Control', 's-maxage=21600, stale-while-revalidate=86400');
     return res.status(200).json(data);
   } catch (error) {
